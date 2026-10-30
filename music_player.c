@@ -4,6 +4,8 @@
 // https://stackoverflow.com/questions/79891188/bold-box-style-in-ncurses
 
 #include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include <ncurses.h>
 #include <locale.h>
 #include <panel.h>
@@ -44,7 +46,9 @@ void init_and_run() {
     curs_set(0);
     init_color(COLOR_BLACK, 114, 122, 129);
     init_color(COLOR_WHITE, 769, 784,772);
-    init_color(COLOR_GREY, 1000, 0, 1000);
+    init_color(COLOR_GREY, 513, 523, 481);
+    
+    //init_color(COLOR_GREY, 1000, 0, 1000);
     init_pair(1, COLOR_GREY, COLOR_BLACK);
     refresh();
 
@@ -57,8 +61,7 @@ void init_and_run() {
         ch = getch();
         main_loop(ch, mp);
     }
-    endwin();
-    ma_engine_uninit(&mp->engine);
+    cleanup_mp(mp);
 }
 
 void main_loop(char ch, struct music_player *mp) {
@@ -79,83 +82,78 @@ void main_loop(char ch, struct music_player *mp) {
         action_move_down_album(mp);
     } else if (ch == 'K') {
         action_move_up_album(mp);
+    } else if (ch == 'c') {
+        free_unused_songs(mp);
+    } else if (ch == 's') {
+        toggle_shuffle(mp);
     }
     //display(mp);
 }
 
 struct song *init_song(char name[MAX_LEN], struct music_player *mp) {
-    char info_str[MAX_LEN] = "LOADING SONG ";
-    strcat(info_str, name);
-    display_debug_info(mp, info_str);
     struct song *new_song = malloc(sizeof(struct song));
     new_song->next = NULL;
+    strcpy(new_song->path, name);
+    display_debug_info(mp, new_song->path);
+    // char info_str[MAX_LEN] = "LOADING SONG ";
+    // strcat(info_str, name);
     // MAKE SURE TO INIT THE SOUND DIRECTLY HERE INSTEAD OF MAKING THE SOUND SOMETHING ELSE AND INITIALIZING IT ELSEWHERE
     // FOR SOME REASON THE BRAINDEAD PROGRAMMERS OF MINIAUDIO DECIDED THAT DOING IT THE WAY LITERALLY EVERY OTHER PROGRAM 
     // WORKS AND MAKING A NEW VARIABLE AND THEN ASSIGNING new_song->sound = new_sound WAS TOO EASY SO THEY JUST HAD TO 
     // MAKE IT SHITTIER LIKE THIS
+    /*
     ma_sound_config soundConfig;
     soundConfig = ma_sound_config_init();
     soundConfig.pFilePath = (const char *)name;
     soundConfig.endCallback = callback_test;
     soundConfig.pEndCallbackUserData = mp;
-    /*
-    ma_sound_init_from_file(
-        &mp->engine, 
-        //name, 
-        name,
-        MA_SOUND_FLAG_DECODE, 
-        NULL, 
-        NULL, 
-        &new_song->sound
-    );
-    */
     ma_sound_init_ex(&mp->engine, &soundConfig, &new_song->sound); 
+    */
+    new_song->initialized = false;
     return new_song;
 }
 
 struct album *init_album(char name[MAX_LEN], struct music_player *mp) {
-    DIR *album_dir;
-    struct dirent *album_dir_ent;
+    // DIR *album_dir;
+    // struct dirent *album_dir_ent;
+    struct dirent **name_list;
     char album_dir_name[MAX_LEN] = "albums/";
     strcat(album_dir_name, name);
-    album_dir = opendir(album_dir_name);
+    int n = scandir(album_dir_name, &name_list, NULL, alphasort);
+    // album_dir = opendir(album_dir_name);
     struct song *song_list = NULL;
-    //printf("VVVVVVVVVVVVVVVVVVVVVVVV\n");
+    // Old way of doing it that didn't do it in alphabetical order
+    /*
     while ((album_dir_ent = readdir(album_dir)) != NULL) {
         if (strcmp(album_dir_ent->d_name, ".") != 0 && strcmp(album_dir_ent->d_name, "..") != 0) {
             char song_str[MAX_LEN];
             strncpy(song_str, album_dir_name, MAX_LEN);
             strcat(song_str, "/");
             strcat(song_str, album_dir_ent->d_name);
-            //printf("%s\n", song_str);
             struct song *add_song = init_song(song_str, mp);
             strncpy(add_song->name, album_dir_ent->d_name, MAX_LEN);
             song_list = append_song(song_list, add_song);
-            /*
-            ma_sound song;
-            
-            ma_sound_init_from_file(
-                engine, 
-                song_str,
-                MA_SOUND_FLAG_DECODE, 
-                NULL, 
-                NULL, 
-                &song
-            );
-            
-            ma_sound_start(&song);
-            getchar();
-            ma_sound_stop(&song);
-            
-            ma_sound_uninit(&song);
-            */
+        } 
+    }
+    */
+    if (n == -1) {
+        return NULL;
+    }
+    for (int i = 0; i < n; i++) {
+        if (strcmp(name_list[i]->d_name, ".") != 0 && strcmp(name_list[i]->d_name, "..") != 0) {
+            char song_str[MAX_LEN];
+            strncpy(song_str, album_dir_name, MAX_LEN);
+            strcat(song_str, "/");
+            strcat(song_str, name_list[i]->d_name);
+            struct song *add_song = init_song(song_str, mp);
+            strncpy(add_song->name, name_list[i]->d_name, MAX_LEN);
+            song_list = append_song(song_list, add_song);
         } 
     }
     struct album *new_album = malloc(sizeof(struct album));
     new_album->songs = song_list;
     new_album->next = NULL;
     strncpy(new_album->name, name, MAX_LEN);
-    //printf("^^^^^^^^^^^^^^^^^^^^^^^^\n\n");
     closedir(album_dir);
     return new_album;
 }
@@ -178,7 +176,9 @@ struct music_player *init_mp() {
     mp->bot_left_win = newwin(height - top_height, left_width, top_height, 0);
     mp->bot_right_win = newwin(height - top_height, width - left_width, top_height, left_width);
     mp->playing = false;
+    mp->shuffle = false;
     display(mp);
+    srand(time(0));
     return mp;
 }
 
@@ -187,52 +187,20 @@ void action_play(struct music_player *mp) {
         ma_sound_stop(&mp->queue->sound);
         mp->playing = false;
     } else {
-        ma_sound_start(&mp->queue->sound);
+        init_and_play_curr_song(mp);
+        //ma_sound_start(&mp->queue->sound);
         mp->playing = true;
     }
     update_playing_window(mp);
 }
 
 void display(struct music_player *mp) {
-    /*
-    cchar_t vb;
-    setcchar(&vb, L"│", 0, 1, nullptr);
-    cchar_t hb;
-    setcchar(&hb, L"─", 0, 1, nullptr);
-    cchar_t tl;
-    setcchar(&tl, L"╭", 0, 1, nullptr);
-    cchar_t tr;
-    setcchar(&tr, L"╮", 0, 1, nullptr);
-    cchar_t bl;
-    setcchar(&bl, L"╰", 0, 1, nullptr);
-    cchar_t br;
-    setcchar(&br, L"╯", 0, 1, nullptr);
-    wborder_set(mp->left_win, 
-        &vb, &vb, &hb, &hb, &tl, &tr, &bl, &br 
-    );
-    wborder_set(mp->right_win, 
-        &vb, &vb, &hb, &hb, &tl, &tr, &bl, &br 
-    );
-    wborder_set(mp->bot_left_win, 
-        &vb, &vb, &hb, &hb, &tl, &tr, &bl, &br 
-    );
-    wborder_set(mp->bot_right_win, 
-        &vb, &vb, &hb, &hb, &tl, &tr, &bl, &br 
-    );
-    wrefresh(mp->left_win);
-    wrefresh(mp->right_win);
-    wrefresh(mp->bot_left_win);
-    wrefresh(mp->bot_right_win);
-    */
     refresh_win(mp->left_win);    
     refresh_win(mp->right_win);    
     refresh_win(mp->bot_left_win);    
     refresh_win(mp->bot_right_win);    
 }
 
-
-// For some reason calling this function causes the program to hang
-// even though the program has finished executing??
 struct album *init_albums(struct music_player *mp) {
     struct album *albums = NULL;
     DIR *dp;
@@ -243,14 +211,17 @@ struct album *init_albums(struct music_player *mp) {
     } else {
         printf("FETCHING ALBUMS...\n");
         while ((ep = readdir(dp)) != NULL) {
+            
+            printf("HELLO\n");
             char new_str[MAX_LEN]  = "albums/";
             strcat(new_str, ep->d_name);
-            printf("%s\n", ep->d_name);
+            printf("%s\n", new_str);
             
-            if (strcmp(new_str, "albums/.") != 0 && strcmp(new_str, "albums/..") != 0){ 
+            if (strcmp(new_str, "albums/.") != 0 && strcmp(new_str, "albums/..") != 0 && strcmp(new_str, "albums/.cache") != 0){ 
                 struct album *new_album = init_album(ep->d_name, mp);
                 albums = append_album(albums, new_album);
             }
+            printf("GOODBYE\n");
         }
         (void) closedir(dp);
     }
@@ -269,7 +240,6 @@ struct song *append_song(struct song *head, struct song *song_to_append) {
     return head;
 }
 
-// Something is broken
 struct album *append_album(struct album *head, struct album *append) {
     if (head == NULL) {
         return append;
@@ -297,6 +267,9 @@ void update_playing_window(struct music_player *mp) {
         mvwprintw(mp->bot_right_win, 2, 1, "Playing");
     } else {
         mvwprintw(mp->bot_right_win, 2, 1, "Paused");
+    }
+    if (mp->shuffle) {
+        mvwprintw(mp->bot_right_win, 3, 1, "Shuffle");
     }
     refresh_win(mp->bot_right_win);
 }
@@ -394,9 +367,11 @@ void action_play_song_selected(struct music_player *mp) {
     if (mp->playing) {
         ma_sound_stop(&mp->queue->sound);
     }
+    uninit_curr_song(mp);
     mp->queue = mp->selected_song;
     ma_sound_seek_to_pcm_frame(&mp->queue->sound, 0);
-    ma_sound_start(&mp->queue->sound);
+    init_and_play_curr_song(mp);
+    //ma_sound_start(&mp->queue->sound);
     mp->playing = true;
     update_playing_window(mp);
 }
@@ -427,19 +402,106 @@ void action_move_up_album(struct music_player *mp) {
     update_song_window(mp);
 }
 
-// Info is not working properly and getting a null pointer
-// causing it to segfault. Look into how to set the info
 void callback_test(void *info, ma_sound *sound) {
     struct music_player *mp = (struct music_player*)info;
     ma_sound_stop(&mp->queue->sound);
-    if (mp->queue->next != NULL) {
-        mp->queue = mp->queue->next;
-    } else {
-        mp->queue = mp->curr_album->songs;
+    display_debug_info(mp, "GOING TO NEXT SONG");
+    //uninit_curr_song(mp);
+    int num_songs_forward = 1;
+    if (mp->shuffle) {
+        num_songs_forward = gen_shuffle_num();
     }
-    ma_sound_start(&mp->queue->sound);
+    for (int i = 0; i < num_songs_forward; i++) {
+        if (mp->queue->next != NULL) {
+            mp->queue = mp->queue->next;
+        } else {
+            mp->queue = mp->curr_album->songs;
+        }
+    }
+    init_and_play_curr_song(mp);
+    //ma_sound_start(&mp->queue->sound);
     update_playing_window(mp);
     
 }
 
+void cleanup_mp(struct music_player *mp) {
+    struct album *free_album;
+    struct song *free_song;
+    delwin(mp->left_win);
+    delwin(mp->right_win);
+    delwin(mp->bot_left_win);
+    delwin(mp->bot_right_win);
+    while (mp->album_head != NULL) {
+        free_album = mp->album_head;
+        mp->album_head = mp->album_head->next; 
+        while (free_album->songs != NULL) {
+            free_song = free_album->songs;
+            free_album->songs = free_album->songs->next;
+            if (free_song->initialized) {
+                ma_sound_uninit(&free_song->sound);
+            }
+            free(free_song);
+        }
+        free(free_album);
+    }
+    ma_engine_uninit(&mp->engine);
+    free(mp);
+    endwin();
+    exit_curses(0);
+}
 
+void init_and_play_curr_song(struct music_player *mp) {
+    if (mp->queue->initialized == false) {
+        ma_sound_config soundConfig;
+        soundConfig = ma_sound_config_init();
+        soundConfig.pFilePath = (const char *)mp->queue->path;
+        soundConfig.endCallback = callback_test;
+        soundConfig.pEndCallbackUserData = mp;
+        ma_sound_init_ex(&mp->engine, &soundConfig, &mp->queue->sound); 
+        mp->queue->initialized = true;
+        display_debug_info(mp, "Song initialized");
+    }
+    ma_sound_start(&mp->queue->sound);
+}
+
+void uninit_curr_song(struct music_player *mp) {
+    if (mp->queue->initialized) {
+        ma_sound_uninit(&mp->queue->sound);
+        mp->queue->initialized = false;
+        display_debug_info(mp, "SONG FREED");
+    }
+}
+
+void free_unused_songs(struct music_player *mp) {
+    struct album *curr_album = mp->album_head;
+    while (curr_album != NULL) {
+        struct song *curr_song = curr_album->songs;
+        while (curr_song != NULL) {
+            if (curr_song != mp->queue) {
+                if (curr_song->initialized) {
+                    ma_sound_uninit(&curr_song->sound);
+                    curr_song->initialized = false;
+                }
+            }
+            curr_song = curr_song->next;
+        }
+        curr_album = curr_album->next;
+    }
+    display_debug_info(mp, "FREED ALL UNUSED SONGS");
+}
+
+
+void toggle_shuffle(struct music_player *mp) {
+    if (mp->shuffle) {
+        mp->shuffle = false;
+        display_debug_info(mp, "Shuffle off");
+    } else {
+        mp->shuffle = true;
+        display_debug_info(mp, "Shuffle on");
+    }
+    update_playing_window(mp);
+}
+
+int gen_shuffle_num() {
+    return rand() % (MAX_SHUFFLE_DISTANCE - MIN_SHUFFLE_DISTANCE + 1) + MIN_SHUFFLE_DISTANCE;
+}

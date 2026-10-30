@@ -6,6 +6,9 @@
 // CONSTANTS
 #define MAX_LEN 1024
 
+#define MIN_SHUFFLE_DISTANCE 1
+#define MAX_SHUFFLE_DISTANCE 20
+
 // STRUCTS
 
 // General struct for songs
@@ -17,6 +20,7 @@ struct music_player {
     WINDOW *bot_left_win;
     WINDOW *bot_right_win;
     bool playing;
+    bool shuffle;
     struct album *album_head;
     struct album *curr_album;
     struct album *selected_album;
@@ -32,6 +36,8 @@ struct album {
 
 struct song {
     char name[MAX_LEN];
+    char path[MAX_LEN];
+    bool initialized;
     ma_sound sound;
     struct song *next;
 };
@@ -86,3 +92,15 @@ void action_move_down_album(struct music_player *mp);
 void action_move_up_album(struct music_player *mp);
 // Testing if callback actually works
 void callback_test(void *info, ma_sound *sound);
+// Cleans up and frees memory
+void cleanup_mp(struct music_player *mp);
+// Plays current song and also initializes it
+void init_and_play_curr_song(struct music_player *mp);
+// Frees the current song in memory
+void uninit_curr_song(struct music_player *mp);
+// Cleans up memory
+void free_unused_songs(struct music_player *mp);
+// Toggles shuffle
+void toggle_shuffle(struct music_player *mp);
+// Generates the number of songs to move forward when shuffling
+int gen_shuffle_num();
