@@ -148,13 +148,15 @@ struct album *init_album(char name[MAX_LEN], struct music_player *mp) {
             struct song *add_song = init_song(song_str, mp);
             strncpy(add_song->name, name_list[i]->d_name, MAX_LEN);
             song_list = append_song(song_list, add_song);
-        } 
+            free(name_list[i]);
+        }
     }
+    free(name_list);
     struct album *new_album = malloc(sizeof(struct album));
     new_album->songs = song_list;
     new_album->next = NULL;
     strncpy(new_album->name, name, MAX_LEN);
-    closedir(album_dir);
+    // closedir(album_dir);
     return new_album;
 }
 
@@ -177,6 +179,8 @@ struct music_player *init_mp() {
     mp->bot_right_win = newwin(height - top_height, width - left_width, top_height, left_width);
     mp->playing = false;
     mp->shuffle = false;
+    // Subtract 2 because the height includes borders
+    mp->top_win_h = top_height - 2;
     display(mp);
     srand(time(0));
     return mp;
@@ -295,8 +299,40 @@ void refresh_win(WINDOW *win) {
 }
 
 void update_playlist_window(struct music_player *mp) {
+    struct album *head = mp->album_head;
+    struct album *curr = head;
+    int len = 0;
+    int curr_idx;
+    while (curr != NULL) {
+        if (curr == mp->selected_album) {
+            curr_idx = len;
+        }
+        len++;
+        curr = curr->next;
+    }
+    
+    char debug_str[MAX_LEN];
+    // Kind of janky but make the song display cleaner
+    if (curr_idx <= mp->top_win_h - SONG_PADDING) {
+        // The first song on the album should be at the top of the screen
+        display_debug_info(mp, "DISPLAY TOP");
+    } else if (curr_idx > len - SONG_PADDING) {
+        // The last song in the album should be at the bottom
+        display_debug_info(mp, "DISPLAY BOTTOM");
+        int move_dist = len - mp->top_win_h;
+        for (int i = 0; i < move_dist; i++) {
+            head = head->next;
+        }
+    } else {
+        // Dynamically update
+        display_debug_info(mp, "MOVING");
+        int move_dist = curr_idx - (mp->top_win_h - SONG_PADDING);
+        for (int i = 0; i < move_dist; i++) {
+            head = head->next;
+        }
+    }
     int idx = 1;
-    struct album *curr = mp->album_head;
+    curr = head;
     while (curr != NULL) {
         if (curr == mp->selected_album) {
             mvwprintw(mp->left_win, idx, 1, "> ");
@@ -311,8 +347,43 @@ void update_playlist_window(struct music_player *mp) {
 }
 
 void update_song_window(struct music_player *mp) {
-    int idx = 1;
+    int idx = 0;
+    // struct song *curr = mp->selected_album->songs;
+    struct song *head = mp->selected_album->songs;
     struct song *curr = mp->selected_album->songs;
+    int len = 0;
+    int curr_idx;
+
+    while (curr != NULL) {
+        if (curr == mp->selected_song) {
+            curr_idx = len;
+        }
+        len++;
+        curr = curr->next;
+    }
+
+    char debug_str[MAX_LEN];
+    // Kind of janky but make the song display cleaner
+    if (curr_idx <= mp->top_win_h - SONG_PADDING) {
+        // The first song on the album should be at the top of the screen
+        display_debug_info(mp, "DISPLAY TOP");
+    } else if (curr_idx > len - SONG_PADDING) {
+        // The last song in the album should be at the bottom
+        display_debug_info(mp, "DISPLAY BOTTOM");
+        int move_dist = len - mp->top_win_h;
+        for (int i = 0; i < move_dist; i++) {
+            head = head->next;
+        }
+    } else {
+        // Dynamically update
+        display_debug_info(mp, "MOVING");
+        int move_dist = curr_idx - (mp->top_win_h - SONG_PADDING);
+        for (int i = 0; i < move_dist; i++) {
+            head = head->next;
+        }
+    }
+    idx = 1;
+    curr = head;
     while (curr != NULL) {
         if (curr == mp->selected_song) {
             mvwprintw(mp->right_win, idx, 1, ">");

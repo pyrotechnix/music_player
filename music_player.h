@@ -8,6 +8,7 @@
 
 #define MIN_SHUFFLE_DISTANCE 1
 #define MAX_SHUFFLE_DISTANCE 20
+#define SONG_PADDING 4
 
 // STRUCTS
 
@@ -26,6 +27,7 @@ struct music_player {
     struct album *selected_album;
     struct song *queue;
     struct song *selected_song;
+    int top_win_h;
 };
 
 struct album {
