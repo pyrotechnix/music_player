@@ -168,7 +168,19 @@ struct music_player *init_mp() {
     int top_height = (height / 4) * 3;
     struct music_player *mp = malloc(sizeof(struct music_player));
     ma_result result; 
-    result = ma_engine_init(NULL, &mp->engine);
+    ma_engine_config engineConfig;
+    
+
+    engineConfig = ma_engine_config_init();
+    engineConfig.periodSizeInFrames = 4800;
+
+    //ma_device_config device_config = ma_device_config_init(ma_device_type_playback);
+    // Increase the period to 50–100ms to heavily reduce context-switching CPU overhead
+    //device_config.playback.periodSizeInMilliseconds = 50; 
+    //engine_config.pDeviceConfig = &device_config;
+
+    result = ma_engine_init(&engineConfig, &mp->engine);
+    //result = ma_engine_init(NULL, &mp->engine);
     if (result != MA_SUCCESS) {
         printf("SOMETHING HAS GONE SERIOUSLY WRONG. AUDIO ENGINE FAILED TO INIT\n");
         return mp;
@@ -528,6 +540,8 @@ void init_and_play_curr_song(struct music_player *mp) {
         soundConfig.pFilePath = (const char *)mp->queue->path;
         soundConfig.endCallback = callback_test;
         soundConfig.pEndCallbackUserData = mp;
+        // Decompress the mp3 on startup
+        // soundConfig.flags = MA_SOUND_FLAG_DECODE | MA_SOUND_FLAG_ASYNC;
         ma_sound_init_ex(&mp->engine, &soundConfig, &mp->queue->sound); 
         mp->queue->initialized = true;
         display_debug_info(mp, "Song initialized");
